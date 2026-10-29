@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>KeyNest | Simple property management software for small landlords (2 to 20 units)</title>
+<meta name="description" content="KeyNest helps first-time landlords run a duplex up to 20 units: rent tracking with late fees, listings and leads, leases, repairs, inspections, and tax-ready reports, all in plain English.">
+<meta name="theme-color" content="#0f766e">
+<link rel="canonical" href="https://keynest.example/">
+<meta property="og:type" content="website"><meta property="og:title" content="KeyNest: run your rentals from your phone, in plain English">
+<meta property="og:description" content="Property management for first-time owners of duplexes to 20 units. Proposed pricing: $49/mo."><meta property="og:image" content="img/og.svg">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%230f766e'/><text x='16' y='23' font-size='20' text-anchor='middle' fill='white' font-family='Arial' font-weight='bold'>K</text></svg>">
+<script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"SoftwareApplication","name":"KeyNest","applicationCategory":"BusinessApplication","operatingSystem":"Web","description":"Property management software for small landlords with 2 to 20 units.","offers":[{"@type":"Offer","name":"Free trial","price":"0","priceCurrency":"USD"},{"@type":"Offer","name":"Starter","price":"49","priceCurrency":"USD","description":"Per month, up to 20 units (proposed)"}]},{"@type":"Organization","name":"KeyNest","areaServed":"Kansas City, MO"},{"@type":"FAQPage","mainEntity":[{"@type":"Question","name":"Is KeyNest made for big property companies?","acceptedAnswer":{"@type":"Answer","text":"No. It is built for people who own a duplex up to about 20 units, often for the first time."}},{"@type":"Question","name":"Can tenants pay rent online?","acceptedAnswer":{"@type":"Answer","text":"Online rent payments are on the roadmap. You can record checks, cash, and bank transfers and print receipts."}},{"@type":"Question","name":"What about taxes?","acceptedAnswer":{"@type":"Answer","text":"KeyNest sorts income and costs into categories similar to IRS Schedule E and exports a CSV. It is not tax advice."}}]}]}</script>
+<link rel="stylesheet" href="vendor/leaflet/leaflet.css"><link rel="stylesheet" href="styles.css"></head>
+<body><header class="top"><a href="#/" class="logo"><span class="mark">K</span>KeyNest</a><nav id="nav"></nav><button class="burger" aria-label="Menu" data-act="menu">☰</button></header>
+<main id="app"></main><div id="toast" role="status" aria-live="polite"></div>
+<footer class="foot"><div>KeyNest preview. Demo properties, people, and photos are fictional. Rental listings link to their original source. <button class="link" id="reset">Reset demo data</button></div><div class="fine">Not legal or tax advice. Pricing shown is proposed.</div></footer>
+<script src="vendor/leaflet/leaflet.js"></script><script src="data.js"></script><script src="listings-data.js"></script>
+<script src="core.js"></script><script src="landing.js"></script><script src="rentals.js"></script><script src="dash.js"></script><script src="dash2.js"></script><script src="tenant.js"></script>
+<script>KN.boot();</script></body></html>

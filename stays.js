@@ -30,17 +30,18 @@
   }));
   S.ensure = () => {
     const db = K.db; let ch = false;
-    if (!db.stays) { db.stays = S.seed(); db.stayReqs = []; ch = true; }
+    if (!db.stays) { const own = { 'Sunny Nest Rentals': 'a1', 'Fountain City Homes': 'a2', 'Riverside Keys': 'a3' }; db.stays = S.seed().filter(x => own[x.brand] === K.cur); db.stayReqs = []; ch = true; }
     db.stayReqs = db.stayReqs || [];
     if (db.setup) {
-      if (!db.props.find(p => p.id === 'pfs')) { db.props.push({ id: 'pfs', name: 'Furnished stays', addr: 'Kansas City, MO (demo)', hood: 'Various', img: db.stays[0].photos[0], type: 'Furnished, 30+ nights' }); ch = true; }
+      if (db.stays.length && !db.props.find(p => p.id === 'pfs')) { db.props.push({ id: 'pfs', name: 'Furnished stays', addr: 'Kansas City, MO (demo)', hood: 'Various', img: db.stays[0].photos[0], type: 'Furnished, 30+ nights' }); ch = true; }
       db.stays.forEach(s => { if (!db.units.find(u => u.id === s.uid)) { const cur = s.blocked.find(([a, b]) => a <= T() && b >= T()); let tid = null;
           if (cur) { tid = 'fst' + s.id; if (!db.tenants.find(t => t.id === tid)) db.tenants.push({ id: tid, uid: s.uid, name: 'Demo Guest ' + s.id.slice(2), email: 'guest' + s.id.slice(2) + '@example.com', phone: '', start: cur[0], end: cur[1], furnished: true }); }
           db.units.push({ id: s.uid, pid: 'pfs', label: s.title, beds: s.beds, baths: s.baths, rent: s.rate, deposit: s.deposit, status: cur ? 'leased' : 'vacant', tid, photos: [], amenities: s.amenities, furnished: true }); ch = true; } });
     }
     if (ch) K.save();
   };
-  S.get = slug => (K.db.stays || []).find(s => s.slug === slug || s.id === slug);
+  S.all = () => K.accounts().filter(a => a.role === 'landlord' && a.status !== 'suspended').flatMap(a => (K.readAcct(a.id).stays || []).map(x => Object.assign({}, x, { _acct: a.id })));
+  S.get = slug => S.all().find(s => s.slug === slug || s.id === slug);
   S.nights = (a, b) => (a && b) ? Math.round((new Date(b + 'T00:00:00') - new Date(a + 'T00:00:00')) / 864e5) : 0;
   S.overlap = (s, a, b) => s.blocked.some(([x, y]) => a < y && b > x);
   S.check = (s, a, b) => { const n = S.nights(a, b);
@@ -62,8 +63,8 @@
     S.ensure();
     if (parts[0]) return S.detail(S.get(parts[0]), q);
     K.routeTitle = 'Furnished monthly stays in Kansas City | KeyNest';
-    const hoods = [...new Set(K.db.stays.map(s => s.hood))].sort();
-    let L = K.db.stays.filter(s => s.published);
+    const ALL = S.all(), hoods = [...new Set(ALL.map(s => s.hood))].sort();
+    let L = ALL.filter(s => s.published);
     if (q.loc) L = L.filter(s => (s.hood + ' ' + s.title).toLowerCase().includes(q.loc.toLowerCase()));
     if (q.max) L = L.filter(s => s.rate <= +q.max);
     if (q.beds) L = L.filter(s => s.beds >= +q.beds);
@@ -105,7 +106,7 @@
   S.detail = (s, q) => {
     if (!s) return K.empty('🧭', 'Listing not found', 'This stay may have been removed.', '<a class="btn" href="#/stays">See all stays</a>');
     K.routeTitle = `${s.title} | Furnished monthly stay in ${s.hood}, KC`;
-    const mi = q.in || (s.availFrom > T() ? s.availFrom : A(3)), mo = q.out || K.addDays(mi, 60), owner = K.sess().landlord && K.sess().mode !== 'renter';
+    const mi = q.in || (s.availFrom > T() ? s.availFrom : A(3)), mo = q.out || K.addDays(mi, 60), owner = K.sess().landlord && K.sess().mode !== 'renter' && s._acct === K.cur;
     return `<section class="wrap sdetail" style="--brand:${e(s.color)}"><div class="brandbar"><span class="bmark">${e(s.brand[0])}</span><b>${e(s.brand)}</b><span class="mut">· Furnished stays in Kansas City</span>${owner ? `<a class="btn sm ghost" href="#/dash/stays/edit/${s.id}">Edit listing</a>` : ''}</div>
       <p class="fine"><a href="#/stays">← All furnished stays</a></p><div class="phead"><h1>${e(s.title)}</h1><div class="row">${heart(s)}<button class="btn sm ghost" data-act="sharestay" data-slug="${s.slug}">🔗 Share</button></div></div>
       <p class="mut">${e(s.hood)}, Kansas City · ${K.bed(s.beds)} · ${s.baths} bath · Furnished${s.pets ? ' · Pet friendly' : ''}</p>
@@ -128,17 +129,17 @@
   K.changes.staycalc = el => { const f = el.form, s = S.get(f.dataset.id); document.getElementById('bmsg').innerHTML = S.quote(s, f.in.value, f.out.value); };
   K.acts.galswap = el => { const m = el.parentNode.querySelector('.main'), t = m.src; m.src = el.src; el.src = t; };
   K.acts.sharestay = el => { const u = location.href.split('#')[0] + '#/stays/' + el.dataset.slug; (navigator.clipboard ? navigator.clipboard.writeText(u) : Promise.reject()).then(() => K.toast('Link copied'), () => prompt('Copy this link', u)); };
-  const addLead = (s, l) => { K.db.leads.push(Object.assign({ id: K.uid('l'), uid: s.uid, status: 'new', created: T() }, l)); };
-  K.forms.stayask = (d, f) => { const s = S.get(f.dataset.id); addLead(s, { type: 'stay', name: d.name, email: d.email, msg: d.msg, stay: s.id }); K.save(); f.reset(); K.toast('Question sent. The owner usually replies within a day.'); };
+  const addLead = (s, l) => K.withAcct(s._acct, db => { db.leads.push(Object.assign({ id: K.uid('l'), uid: s.uid, status: 'new', created: T() }, l)); });
+  K.forms.stayask = (d, f) => { const s = S.get(f.dataset.id); addLead(s, { type: 'stay', name: d.name, email: d.email, msg: d.msg, stay: s.id }); f.reset(); K.toast('Question sent. The owner usually replies within a day.'); };
   K.forms.staybook = (d, f) => { const s = S.get(f.dataset.id), err = S.check(s, d.in, d.out);
     if (err) { document.getElementById('bmsg').innerHTML = S.quote(s, d.in, d.out); return K.toast('Stays need 30+ nights'); }
     const n = S.nights(d.in, d.out), id = K.uid('sr');
-    K.db.stayReqs.push({ id, stay: s.id, name: d.name, email: d.email, checkIn: d.in, checkOut: d.out, nights: n, pet: !!d.pet, status: 'pending', created: T(), total: S.cost(s, n, d.pet).total });
+    K.withAcct(s._acct, db => db.stayReqs.push({ id, stay: s.id, name: d.name, email: d.email, checkIn: d.in, checkOut: d.out, nights: n, pet: !!d.pet, status: 'pending', created: T(), total: S.cost(s, n, d.pet).total }));
     addLead(s, { type: 'booking', name: d.name, email: d.email, checkIn: d.in, checkOut: d.out, nights: n, req: id, msg: `Request to book ${n} nights.` });
-    K.save(); K.go('#/stays/' + s.slug); setTimeout(() => K.toast('Request sent! You will hear back within 24 hours.'), 50); };
+    K.go('#/stays/' + s.slug); setTimeout(() => K.toast('Request sent! You will hear back within 24 hours.'), 50); };
 
   // ---------- RENTER: favorites ----------
-  K.routes.saved = () => { S.ensure(); const f = S.favs(), L = K.db.stays.filter(s => f.includes(s.id));
+  K.routes.saved = () => { S.ensure(); const f = S.favs(), L = S.all().filter(s => f.includes(s.id));
     return `<section class="wrap"><h1>Saved stays</h1>${L.length ? `<div class="grid">${L.map(card).join('')}</div>` : K.empty('♡', 'Nothing saved yet', 'Tap the heart on any place to save it here.', '<a class="btn" href="#/stays">Browse stays</a>')}</section>`; };
 
   // ---------- OWNER: dashboard pages ----------
@@ -175,7 +176,7 @@
   K.changes.stayphotos = async el => { newPhotos = []; for (const f of [...el.files].slice(0, 6)) newPhotos.push(await K.resize(f, 900)); document.getElementById('phprev').innerHTML = newPhotos.map(p => `<img src="${p}" alt="">`).join(''); };
   K.forms.staysave = (d, f) => { let s = K.db.stays.find(x => x.id === f.dataset.id);
     const slug = (d.slug || d.title).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
-    if (K.db.stays.some(x => x.slug === slug && x !== s)) return K.toast('That link is taken. Try another.');
+    if (S.all().some(x => x.slug === slug && x.id !== (s && s.id))) return K.toast('That link is taken. Try another.');
     if (!s) { const i = K.db.stays.length + 1; s = { id: K.uid('st'), uid: K.uid('fsu'), lat: 39.05 + (Math.random() - .5) * .06, lon: -94.59 + (Math.random() - .5) * .02, photos: S.photos(i * 37) }; K.db.stays.push(s); }
     Object.assign(s, { title: d.title, slug, hood: d.hood, beds: +d.beds, baths: +d.baths, desc: d.desc, rate: +d.rate, deposit: +d.deposit, cleaning: +d.cleaning, petFee: +d.petFee, pets: !!d.pets, amenities: AM.filter(a => d['am_' + a]), availFrom: d.availFrom || T(), rules: d.rules.split('\n').map(x => x.trim()).filter(Boolean), brand: d.brand, color: d.color, published: !!d.published,
       blocked: d.blocked.split('\n').map(l => l.match(/(\d{4}-\d\d-\d\d)\D+(\d{4}-\d\d-\d\d)/)).filter(Boolean).map(m => [m[1], m[2]]) });

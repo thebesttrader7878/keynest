@@ -4,7 +4,7 @@
   const groups = [
     ['Everyday', [['home', '🏠', 'Home'], ['rent', '💵', 'Rent'], ['repairs', '🔧', 'Repairs'], ['messages', '💬', 'Messages'], ['calendar', '📅', 'Calendar'], ['alerts', '🔔', 'Reminders']]],
     ['Units and people', [['units', '🏢', 'Units'], ['tenants', '👥', 'Tenants'], ['leads', '📬', 'Leads'], ['stays', '🛋', 'Furnished stays'], ['leases', '📝', 'Leases'], ['inspections', '🔍', 'Inspections']]],
-    ['Money', [['expenses', '🧾', 'Expenses'], ['reports', '📊', 'Reports'], ['tools', '🧮', 'Calculators']]],
+    ['Money', [['payments', '🏦', 'Payments'], ['expenses', '🧾', 'Expenses'], ['reports', '📊', 'Reports'], ['tools', '🧮', 'Calculators']]],
     ['More', [['market', '📣', 'Advertise'], ['vendors', '🧰', 'Vendors'], ['docs', '🗂', 'Documents'], ['settings', '⚙️', 'Settings']]]
   ];
   D.all = groups.flatMap(g => g[1]);
@@ -23,7 +23,7 @@
   };
   K.routes.dash = (parts) => {
     const s = K.sess();
-    if (!s.landlord) return `<div class="signup card"><div class="b"><h1>Landlord login</h1><div class="demo">Demo login: <b>owner@keynest.demo</b> / <b>demo</b></div>
+    if (!s.landlord) return `<div class="signup card"><div class="b"><h1>Landlord login</h1><div class="demo">Demo login: <b>owner@keynest.demo</b> / <b>demo</b><div class="fine">Other demo landlords: landlord2@keynest.demo, landlord3@keynest.demo (password demo)</div></div>
       <form data-form="llogin"><label>Email</label><input name="email" type="email" required value="owner@keynest.demo"><label>Password</label><input name="pw" type="password" required value="demo"><button class="btn big">Log in</button></form><p class="fine center">New here? <a href="#/signup">Start a free trial</a></p></div></div>`;
     if (!K.db.setup) return D.wizard();
     const page = parts[0] || 'home', fn = D.pages[page] || D.pages.home;
@@ -36,8 +36,8 @@
   };
   D.pages.more = () => `<h1>Everything</h1>${groups.map(([g, items]) => `<h3 class="sg2">${g}</h3><div class="moregrid">${items.map(([k, i, t]) => `<a href="#/dash/${k}"><span>${i}</span>${t}</a>`).join('')}</div>`).join('')}<button class="btn ghost big" data-act="llogout">Log out</button>`;
   K.changes.scope = el => { K.setSess({ pid: el.value }); K.rerender(); };
-  K.forms.llogin = d => { if (d.email.trim().toLowerCase() !== 'owner@keynest.demo' || d.pw !== 'demo') return K.toast('Use the demo login shown above'); if (!K.db.setup && !K.db.props.length) K.loadDemo(); K.setSess({ landlord: true, pid: 'all', mode: 'host' }); K.stays && K.stays.ensure(); K.rerender(); };
-  K.acts.llogout = () => { K.setSess({ landlord: false }); setTimeout(() => K.go('#/dash'), 0); };
+  K.forms.llogin = d => { const a = K.accounts().find(x => x.role === 'landlord' && x.email.toLowerCase() === d.email.trim().toLowerCase()); if (!a || d.pw !== a.pw) return K.toast('Wrong email or password. Try the demo login shown above.'); if (a.status === 'suspended') return K.toast('This account is paused. Contact KeyNest support.'); K.use(a.id); K.setSess({ landlord: true, acct: a.id, help: null, pid: 'all', mode: 'host' }); K.stays && K.stays.ensure(); K.rerender(); };
+  K.acts.llogout = () => { if (K.sess().help) return K.acts.helpexit(); K.setSess({ landlord: false, acct: null }); K.use('a1'); setTimeout(() => K.go('#/dash'), 0); };
 
   // ---------- HOME ----------
   D.monthStats = () => { const m = K.todayIso().slice(0, 7), cur = D.scoped(K.db.payments).filter(p => p.due.slice(0, 7) === m); return { due: cur.reduce((a, p) => a + K.billTotal(p), 0), paid: cur.reduce((a, p) => a + K.paidAmt(p), 0), late: cur.filter(p => ['late', 'partial late'].includes(K.payStatus(p))), owed: cur.reduce((a, p) => a + Math.max(0, K.balance(p)), 0) }; };

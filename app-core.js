@@ -1,14 +1,27 @@
 // KeyNest core: store, helpers, router, event delegation.
 (function () {
   'use strict';
-  const KEY = 'keynest_v2', SKEY = 'keynest_session_v2';
+  const SKEY = 'keynest_session_v4', AKEY = 'keynest_v4_accounts', LKEY = 'keynest_v4_adminlog', DBP = 'keynest_v4_db_';
   const clone = o => JSON.parse(JSON.stringify(o));
   const blank = () => ({ props: [], units: [], tenants: [], payments: [], expenses: [], charges: [], leases: [], vendors: clone(KN_SEED.vendors), tickets: [], leads: [], threads: [], announcements: [], inspections: [], docs: [], settings: clone(KN_SEED.settings), readNotes: [], setup: false });
   const K = window.KN = { routes: {}, acts: {}, forms: {}, changes: {}, after: [] };
-  K.load = () => { try { const s = JSON.parse(localStorage.getItem(KEY)); if (s && s.units) return Object.assign(blank(), s); } catch (e) {} return blank(); };
-  K.db = K.load();
-  K.save = () => { try { localStorage.setItem(KEY, JSON.stringify(K.db)); return true; } catch (e) { K.toast('Storage is full. Try smaller photos.'); return false; } };
-  K.loadDemo = () => { K.db = Object.assign(blank(), clone(KN_SEED)); K.db.setup = true; K.applyLateFees(); if (K.stays) K.stays.ensure(); K.save(); };
+  // ---------- accounts: each landlord account has its own data store (like one row-scope per owner) ----------
+  K.blank = blank; K.cur = 'a1';
+  K.accounts = () => { try { return JSON.parse(localStorage.getItem(AKEY)) || []; } catch (e) { return []; } };
+  K.saveAccounts = a => localStorage.setItem(AKEY, JSON.stringify(a));
+  K.acct = id => K.accounts().find(a => a.id === id);
+  K.load = (id = K.cur) => { try { const s = JSON.parse(localStorage.getItem(DBP + id)); if (s && s.units) return Object.assign(blank(), s); } catch (e) {} return blank(); };
+  K.db = blank();
+  K.save = () => { try { localStorage.setItem(DBP + K.cur, JSON.stringify(K.db)); if (K.onSave) K.onSave(); return true; } catch (e) { K.toast('Storage is full. Try smaller photos.'); return false; } };
+  K.use = id => { K.cur = id; K.db = K.load(id); if (K.db.setup) { K.ensureBills(); K.applyLateFees(); } };
+  K.withAcct = (id, fn) => { if (id === K.cur) { const r = fn(K.db); K.save(); return r; } const keep = [K.cur, K.db], q = K.onSave; K.onSave = null; K.cur = id; K.db = K.load(id); try { const r = fn(K.db); K.save(); return r; } finally { K.cur = keep[0]; K.db = keep[1]; K.onSave = q; } };
+  K.readAcct = id => id === K.cur ? K.db : K.load(id);
+  K.log = (text, target) => { const l = K.adminLog(); l.unshift({ at: new Date().toISOString(), who: 'Seven (admin)', target: target || '', text }); localStorage.setItem(LKEY, JSON.stringify(l.slice(0, 300))); };
+  K.adminLog = () => { try { return JSON.parse(localStorage.getItem(LKEY)) || []; } catch (e) { return []; } };
+  K.seedFor = id => { const a = K.acct(id); if (id === 'a1') return Object.assign(blank(), clone(KN_SEED), { setup: true }); const b = K.seedLandlord && a && a.seed ? K.seedLandlord(a) : blank(); return b; };
+  K.seedAll = (force) => { if (!force && K.accounts().length) return; Object.keys(localStorage).filter(k => k.startsWith(DBP)).forEach(k => localStorage.removeItem(k)); localStorage.removeItem(LKEY);
+    K.saveAccounts(clone(KN_ACCOUNTS)); K.accounts().filter(a => a.role === 'landlord').forEach(a => { K.cur = a.id; K.db = K.seedFor(a.id); if (K.db.setup) { K.ensureBills(); K.applyLateFees(); } if (K.stays) K.stays.ensure(); if (K.payx) K.payx.ensure(K.db); K.save(); }); localStorage.removeItem('keynest_v4_platform'); K.cur = 'a1'; };
+  K.loadDemo = () => { K.db = K.seedFor(K.cur); K.db.setup = true; K.applyLateFees(); if (K.stays) K.stays.ensure(); K.save(); };
   K.startFresh = () => { K.db = blank(); K.save(); };
   K.sess = () => { try { return JSON.parse(localStorage.getItem(SKEY)) || {}; } catch (e) { return {}; } };
   K.setSess = p => localStorage.setItem(SKEY, JSON.stringify(Object.assign(K.sess(), p)));
@@ -30,7 +43,7 @@
   K.bed = b => +b ? b + ' bed' : 'Studio';
   K.tip = t => `<button type="button" class="tip" aria-label="What does this mean?" data-tip="${K.esc(t)}">?</button>`;
   K.empty = (icon, title, text, actions = '') => `<div class="empty"><div class="ic">${icon}</div><h2>${title}</h2><p class="mut">${text}</p><div class="row">${actions}</div></div>`;
-  K.toast = m => { const t = $('#toast'); t.textContent = m; t.classList.add('on'); clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove('on'), 2600); };
+  K.toast = m => { const t = $('#toast'); t.textContent = m; t.classList.add('on'); clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove('on'), 3000); };
   K.unitState = u => { if (u.status === 'vacant') return 'vacant'; const t = K.tenant(u.tid); return t && K.days(t.end) <= 60 ? 'ending' : 'leased'; };
   // Money model: a payment row is one month's bill for one tenant.
   K.billTotal = p => p.rent + (p.extra || 0) + (p.lateFee || 0);
@@ -42,7 +55,7 @@
   K.applyLateFees = () => { let c = 0; K.db.payments.forEach(p => { if (!p.lateFee && K.balance(p) > 0 && K.days(K.addDays(p.due, K.db.settings.grace)) < 0) { p.lateFee = K.lateFeeFor(p); p.autoFee = true; c++; } }); return c; };
   K.ensureBills = () => { // create this month's bill for each active tenant
     const due = K.todayIso().slice(0, 8) + String(K.db.settings.dueDay).padStart(2, '0');
-    K.db.tenants.forEach(t => { if (K.days(t.end) < -31) return; if (!K.db.payments.some(p => p.tid === t.id && p.due.slice(0, 7) === due.slice(0, 7))) { const u = K.unit(t.uid); K.db.payments.push({ id: K.uid('pay'), tid: t.id, uid: u.id, pid: u.pid, due, rent: u.rent, extra: K.db.charges.filter(c => c.uid === u.id).reduce((a, c) => a + c.amount, 0), lateFee: 0, txns: [] }); } });
+    K.db.tenants.forEach(t => { if (K.days(t.end) < -31) return; if (!K.db.payments.some(p => p.tid === t.id && p.due.slice(0, 7) === due.slice(0, 7))) { const u = K.unit(t.uid); K.db.payments.push({ id: K.uid('pay'), tid: t.id, uid: u.id, pid: u.pid, due, rent: u.rent, extra: K.db.charges.filter(c => c.uid === u.id && !c.oneTime).reduce((a, c) => a + c.amount, 0), lateFee: 0, txns: [] }); } });
   };
   K.scope = () => K.sess().pid || 'all';
   K.inScope = pid => K.scope() === 'all' || pid === K.scope();
@@ -61,10 +74,10 @@
     const h = location.hash.replace(/^#/, '') || '/', [path, qs] = h.split('?');
     const q = Object.fromEntries(new URLSearchParams(qs || '')), parts = path.split('/').filter(Boolean);
     document.body.classList.remove('menu');
-    const fn = K.routes[parts[0] || ''] || K.routes._404;
+    const fn = K.routes[parts[0] || ''] || K.routes._404, ss = K.sess();
     document.body.dataset.route = parts[0] || 'home';
     K.nav(parts[0] || '');
-    $('#app').innerHTML = fn(parts.slice(1), q);
+    $('#app').innerHTML = (ss.help && ss.admin ? `<div class="helpbar" data-testid="helpbar"><span>🛟 You are helping <b>${K.esc((K.acct(ss.help) || {}).name || '')}</b>. Changes save to their account.</span> <button class="btn sm" data-act="helpexit">Exit</button></div>` : '') + fn(parts.slice(1), q);
     if (!K._keepScroll) window.scrollTo(0, 0); K._keepScroll = false;
     K.after.splice(0).forEach(f => { try { f(); } catch (e) { console.error(e); } });
     const t = K.routeTitle; if (t) document.title = t; K.routeTitle = null;
@@ -75,8 +88,8 @@
     const renter = s.mode === 'renter';
     const links = renter ? [['stays', 'Furnished stays'], ['saved', 'Saved'], ['rentals', 'Long-term rentals']] : [['', 'Home'], ['stays', 'Furnished stays'], ['rentals', 'Find a rental'], ['tenant', s.tenant ? 'My home' : 'Tenant login'], ['dash', s.landlord ? 'Dashboard' : 'Landlord login']];
     const tog = `<button class="modetog" data-act="switchmode" data-testid="modetoggle">${renter ? '🏠 Switch to hosting' : '🧳 Switch to renting'}</button>`;
-    const prof = s.landlord ? `<div class="profile"><button class="avatar" data-act="profmenu" aria-label="Profile menu">${K.esc((K.db.settings.owner || 'D')[0])}</button><div class="pmenu"><div class="fine">Signed in as owner@keynest.demo</div><div class="fine">Mode: <b>${renter ? 'Renter' : 'Landlord'}</b></div><button class="btn sm full" data-act="switchmode">${renter ? 'Switch to Landlord mode' : 'Switch to Renter mode'}</button>${renter ? '<a href="#/saved">Saved stays</a>' : '<a href="#/dash/stays">My furnished listings</a>'}<a href="#/dash" data-act="llogout">Log out</a></div></div>` : '';
-    $('#nav').innerHTML = links.map(([k, t]) => `<a href="#/${k}" class="${r === k ? 'on' : ''}">${t}</a>`).join('') + tog + prof + (s.landlord ? '' : `<a href="#/signup" class="btn sm navcta">Start free trial</a>`);
+    const prof = s.landlord ? `<div class="profile"><button class="avatar" data-act="profmenu" aria-label="Profile menu">${K.esc((K.db.settings.owner || 'D')[0])}</button><div class="pmenu"><div class="fine">Signed in as ${K.esc((K.acct(s.help || s.acct) || {}).email || '')}</div><div class="fine">Mode: <b>${renter ? 'Renter' : 'Landlord'}</b></div><button class="btn sm full" data-act="switchmode">${renter ? 'Switch to Landlord mode' : 'Switch to Renter mode'}</button>${renter ? '<a href="#/saved">Saved stays</a>' : '<a href="#/dash/stays">My furnished listings</a>'}<a href="#/dash" data-act="llogout">Log out</a></div></div>` : '';
+    $('#nav').innerHTML = links.map(([k, t]) => `<a href="#/${k}" class="${r === k ? 'on' : ''}">${t}</a>`).join('') + tog + prof + (s.admin ? `<a href="#/admin" class="${r === 'admin' ? 'on' : ''} adminlink">🛡 Admin</a>` : '') + (s.landlord || s.admin ? '' : `<a href="#/signup" class="btn sm navcta">Start free trial</a>`);
     document.body.dataset.mode = renter ? 'renter' : 'host'; const mt = $('#mtog'); if (mt) mt.innerHTML = tog;
   };
   K.routes._404 = () => K.empty('🧭', 'Page not found', 'That link does not go anywhere.', '<a class="btn" href="#/">Go home</a>');
@@ -100,9 +113,9 @@
   K.acts.menu = () => document.body.classList.toggle('menu');
   K.acts.print = () => window.print();
   K.boot = () => {
-    if (K.stays) K.stays.ensure();
+    K.seedAll(); const ss = K.sess(); K.use(ss.admin && ss.help ? ss.help : (ss.acct || 'a1')); if (K.stays) K.stays.ensure();
     if (K.db.setup) { K.ensureBills(); const c = K.applyLateFees(); if (c) K.save(); }
-    $('#reset').addEventListener('click', () => { if (confirm('Reset the demo? This loads fresh sample data and erases your changes.')) { K.loadDemo(); localStorage.removeItem(SKEY); K.stays && K.stays.ensure(); K.toast('Demo data reset'); K.go('#/'); } });
+    $('#reset').addEventListener('click', () => { if (confirm('Reset the demo? This loads fresh sample data and erases your changes.')) { localStorage.removeItem(SKEY); K.seedAll(true); K.use('a1'); K.toast('Demo data reset'); K.go('#/'); } });
     K.render();
   };
 })();

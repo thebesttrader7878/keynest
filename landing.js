@@ -65,10 +65,10 @@
     K.$('#calcOut').innerHTML = `<div><span>Hours back each month</span><b>${timeSaved}</b></div><div><span>Value of your time per year</span><b>${K.money(timeVal)}</b></div><div><span>Rent kept from shorter vacancies per year</span><b>${K.money(vac)}</b></div><div class="tot"><span>Estimated yearly benefit after the $49/mo plan</span><b>${K.money(timeVal + vac - cost)}</b></div>`;
   };
   const oldRender = K.render; K.render = function () { oldRender(); if (K.$('#calcOut')) K.changes.lcalc(); };
-  K.acts.liveDemo = () => { K.loadDemo(); K.setSess({ landlord: true, pid: 'all' }); K.toast('Welcome to the live demo'); K.go('#/dash/home'); };
+  K.acts.liveDemo = () => { K.use('a1'); K.setSess({ landlord: true, acct: 'a1', pid: 'all', mode: 'host' }); K.toast('Welcome to the live demo'); K.go('#/dash/home'); };
   K.routes.signup = () => { K.routeTitle = 'Start your free trial | KeyNest';
     return `<div class="signup card"><div class="b"><h1>Start your free trial</h1><p class="mut">Preview only. Nothing is sent anywhere and no card is needed.</p>
     <form data-form="signup"><label>Your name</label><input name="name" required autocomplete="name"><label>Email</label><input name="email" type="email" required autocomplete="email"><label>How many units do you own?</label><select name="size"><option>2 (a duplex)</option><option>3 to 4</option><option>5 to 10</option><option>11 to 20</option><option>More than 20</option></select>
     <button class="btn big">Create my account and set up</button></form><p class="fine center">Just looking? <button class="link" data-act="liveDemo">Open the live demo instead</button></p></div></div>`; };
-  K.forms.signup = d => { K.startFresh(); K.db.settings.owner = d.name; K.save(); K.setSess({ landlord: true, pid: 'all', owner: d.name }); K.toast('Account created. Let\'s set up your property.'); K.go('#/dash'); };
+  K.forms.signup = d => { const id = K.uid('a'), A = K.accounts(); A.push({ id, role: 'landlord', name: d.name, email: (d.email || id + '@example.com'), phone: '', pw: d.pw || 'demo', status: 'active', created: K.todayIso() }); K.saveAccounts(A); K.cur = id; K.startFresh(); K.db.settings.owner = d.name; K.save(); K.setSess({ landlord: true, acct: id, pid: 'all', owner: d.name, mode: 'host' }); K.toast('Account created. Let\'s set up your property.'); K.go('#/dash'); };
 })();

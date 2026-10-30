@@ -3,7 +3,7 @@
   const K = KN, e = K.esc, D = K.dash = { pages: {} };
   const groups = [
     ['Everyday', [['home', '🏠', 'Home'], ['rent', '💵', 'Rent'], ['repairs', '🔧', 'Repairs'], ['messages', '💬', 'Messages'], ['calendar', '📅', 'Calendar'], ['alerts', '🔔', 'Reminders']]],
-    ['Units and people', [['units', '🏢', 'Units'], ['tenants', '👥', 'Tenants'], ['leads', '📬', 'Leads'], ['leases', '📝', 'Leases'], ['inspections', '🔍', 'Inspections']]],
+    ['Units and people', [['units', '🏢', 'Units'], ['tenants', '👥', 'Tenants'], ['leads', '📬', 'Leads'], ['stays', '🛋', 'Furnished stays'], ['leases', '📝', 'Leases'], ['inspections', '🔍', 'Inspections']]],
     ['Money', [['expenses', '🧾', 'Expenses'], ['reports', '📊', 'Reports'], ['tools', '🧮', 'Calculators']]],
     ['More', [['market', '📣', 'Advertise'], ['vendors', '🧰', 'Vendors'], ['docs', '🗂', 'Documents'], ['settings', '⚙️', 'Settings']]]
   ];
@@ -36,7 +36,7 @@
   };
   D.pages.more = () => `<h1>Everything</h1>${groups.map(([g, items]) => `<h3 class="sg2">${g}</h3><div class="moregrid">${items.map(([k, i, t]) => `<a href="#/dash/${k}"><span>${i}</span>${t}</a>`).join('')}</div>`).join('')}<button class="btn ghost big" data-act="llogout">Log out</button>`;
   K.changes.scope = el => { K.setSess({ pid: el.value }); K.rerender(); };
-  K.forms.llogin = d => { if (d.email.trim().toLowerCase() !== 'owner@keynest.demo' || d.pw !== 'demo') return K.toast('Use the demo login shown above'); if (!K.db.setup && !K.db.props.length) K.loadDemo(); K.setSess({ landlord: true, pid: 'all' }); K.rerender(); };
+  K.forms.llogin = d => { if (d.email.trim().toLowerCase() !== 'owner@keynest.demo' || d.pw !== 'demo') return K.toast('Use the demo login shown above'); if (!K.db.setup && !K.db.props.length) K.loadDemo(); K.setSess({ landlord: true, pid: 'all', mode: 'host' }); K.stays && K.stays.ensure(); K.rerender(); };
   K.acts.llogout = () => { K.setSess({ landlord: false }); setTimeout(() => K.go('#/dash'), 0); };
 
   // ---------- HOME ----------
@@ -123,9 +123,9 @@
   const scrItems = [['id', 'Photo ID matches the name'], ['income', 'Income is about 3x the rent'], ['refs', 'Called past landlord references'], ['bg', 'Background check (demo, not run)'], ['credit', 'Credit check (demo, not run)']];
   D.pages.leads = () => {
     const ls = D.scoped(K.db.leads); if (!ls.length) return `<h1>Leads</h1>` + K.empty('📬', 'No leads yet', 'When renters ask a question, book a showing, or apply, it lands here.', '<a class="btn" href="#/dash/market">Advertise a unit</a>');
-    const tl = { inquiry: ['Question', 'blue'], showing: ['Showing', 'amber'], application: ['Application', 'green'] };
+    const tl = { stay: ['Stay question', 'blue'], booking: ['Stay request', 'green'], inquiry: ['Question', 'blue'], showing: ['Showing', 'amber'], application: ['Application', 'green'] };
     return `<h1>Leads ${K.tip('People interested in renting from you. The first landlord to reply usually wins the renter.')}</h1><div class="card">${ls.slice().reverse().map(l => { const u = K.unit(l.uid), sc = l.screen; return `<div class="lead"><div class="grow"><span class="pill ${tl[l.type][1]}">${tl[l.type][0]}</span> <b>${e(l.name)}</b><div class="mut">${e(K.prop(u.pid).name || '')} ${e(u.label || '')} · <a href="mailto:${e(l.email)}">${e(l.email)}</a> ${e(l.phone || '')}</div>
-      ${l.slot ? `<div>🗓 ${e(l.slot)}</div>` : ''}${l.msg ? `<div class="quote">“${e(l.msg)}”</div>` : ''}
+      ${l.slot ? `<div>🗓 ${e(l.slot)}</div>` : ''}${l.checkIn ? `<div>🛋 ${K.fmt(l.checkIn)} to ${K.fmt(l.checkOut)} (${l.nights} nights) <a href="#/dash/stays/requests">Manage</a></div>` : ''}${l.msg ? `<div class="quote">“${e(l.msg)}”</div>` : ''}
       ${l.type === 'application' ? `<div>Income ${l.income ? K.money(l.income) + '/yr' : 'not given'}${l.income && u.rent ? ` (${(l.income / 12 / u.rent).toFixed(1)}x rent ${K.tip('Monthly income divided by rent. Many landlords look for about 3x.')})` : ''} · ${e(l.employer || 'Employer not given')} · Move-in ${K.fmt(l.moveIn) || 'flexible'}</div>
         <details class="screen"><summary>Screening checklist (${scItems(sc)}/5) ${K.tip('A to-do list to keep screening fair and consistent. This preview does not run real checks. Apply the same rules to everyone and follow fair housing laws.')}</summary>${scrItems.map(([k, t]) => `<label class="chk"><input type="checkbox" data-change="screen" data-lead="${l.id}" data-k="${k}" ${sc && sc[k] ? 'checked' : ''}> ${t}</label>`).join('')}</details>` : ''}
       <div class="fine">Received ${K.fmt(l.created)}</div></div>

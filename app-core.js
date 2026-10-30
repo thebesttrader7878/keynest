@@ -8,7 +8,7 @@
   K.load = () => { try { const s = JSON.parse(localStorage.getItem(KEY)); if (s && s.units) return Object.assign(blank(), s); } catch (e) {} return blank(); };
   K.db = K.load();
   K.save = () => { try { localStorage.setItem(KEY, JSON.stringify(K.db)); return true; } catch (e) { K.toast('Storage is full. Try smaller photos.'); return false; } };
-  K.loadDemo = () => { K.db = Object.assign(blank(), clone(KN_SEED)); K.db.setup = true; K.applyLateFees(); K.save(); };
+  K.loadDemo = () => { K.db = Object.assign(blank(), clone(KN_SEED)); K.db.setup = true; K.applyLateFees(); if (K.stays) K.stays.ensure(); K.save(); };
   K.startFresh = () => { K.db = blank(); K.save(); };
   K.sess = () => { try { return JSON.parse(localStorage.getItem(SKEY)) || {}; } catch (e) { return {}; } };
   K.setSess = p => localStorage.setItem(SKEY, JSON.stringify(Object.assign(K.sess(), p)));
@@ -72,8 +72,12 @@
   K.rerender = () => { K._keepScroll = true; K.render(); };
   K.nav = r => {
     const s = K.sess();
-    const links = [['', 'Home'], ['rentals', 'Find a rental'], ['tenant', s.tenant ? 'My home' : 'Tenant login'], ['dash', s.landlord ? 'Dashboard' : 'Landlord login']];
-    $('#nav').innerHTML = links.map(([k, t]) => `<a href="#/${k}" class="${r === k ? 'on' : ''}">${t}</a>`).join('') + (s.landlord ? '' : `<a href="#/signup" class="btn sm navcta">Start free trial</a>`);
+    const renter = s.mode === 'renter';
+    const links = renter ? [['stays', 'Furnished stays'], ['saved', 'Saved'], ['rentals', 'Long-term rentals']] : [['', 'Home'], ['stays', 'Furnished stays'], ['rentals', 'Find a rental'], ['tenant', s.tenant ? 'My home' : 'Tenant login'], ['dash', s.landlord ? 'Dashboard' : 'Landlord login']];
+    const tog = `<button class="modetog" data-act="switchmode" data-testid="modetoggle">${renter ? '🏠 Switch to hosting' : '🧳 Switch to renting'}</button>`;
+    const prof = s.landlord ? `<div class="profile"><button class="avatar" data-act="profmenu" aria-label="Profile menu">${K.esc((K.db.settings.owner || 'D')[0])}</button><div class="pmenu"><div class="fine">Signed in as owner@keynest.demo</div><div class="fine">Mode: <b>${renter ? 'Renter' : 'Landlord'}</b></div><button class="btn sm full" data-act="switchmode">${renter ? 'Switch to Landlord mode' : 'Switch to Renter mode'}</button>${renter ? '<a href="#/saved">Saved stays</a>' : '<a href="#/dash/stays">My furnished listings</a>'}<a href="#/dash" data-act="llogout">Log out</a></div></div>` : '';
+    $('#nav').innerHTML = links.map(([k, t]) => `<a href="#/${k}" class="${r === k ? 'on' : ''}">${t}</a>`).join('') + tog + prof + (s.landlord ? '' : `<a href="#/signup" class="btn sm navcta">Start free trial</a>`);
+    document.body.dataset.mode = renter ? 'renter' : 'host'; const mt = $('#mtog'); if (mt) mt.innerHTML = tog;
   };
   K.routes._404 = () => K.empty('🧭', 'Page not found', 'That link does not go anywhere.', '<a class="btn" href="#/">Go home</a>');
   window.addEventListener('hashchange', () => K.render());
@@ -91,11 +95,14 @@
   document.addEventListener('input', e => { const el = e.target.closest('[data-input]'); if (el && K.changes[el.dataset.input]) K.changes[el.dataset.input](el, e); });
   document.addEventListener('submit', e => { const f = e.target, n = f.dataset.form; if (!n || !K.forms[n]) return; e.preventDefault(); K.forms[n](Object.fromEntries(new FormData(f)), f, e); });
   K.acts.demo = () => { K.loadDemo(); K.toast('Demo data loaded'); K.rerender(); };
+  K.acts.profmenu = el => el.parentNode.classList.toggle('open');
+  K.acts.switchmode = () => { const s = K.sess(), to = s.mode === 'renter' ? 'host' : 'renter'; K.setSess({ mode: to }); K.toast(to === 'renter' ? 'Renter mode. Happy hunting!' : 'Landlord mode. Welcome back.'); K.go(to === 'renter' ? '#/stays' : (s.landlord ? '#/dash/home' : '#/dash')); K.nav((location.hash.split('/')[1] || '')); };
   K.acts.menu = () => document.body.classList.toggle('menu');
   K.acts.print = () => window.print();
   K.boot = () => {
+    if (K.stays) K.stays.ensure();
     if (K.db.setup) { K.ensureBills(); const c = K.applyLateFees(); if (c) K.save(); }
-    $('#reset').addEventListener('click', () => { if (confirm('Reset the demo? This loads fresh sample data and erases your changes.')) { K.loadDemo(); localStorage.removeItem(SKEY); K.toast('Demo data reset'); K.go('#/'); } });
+    $('#reset').addEventListener('click', () => { if (confirm('Reset the demo? This loads fresh sample data and erases your changes.')) { K.loadDemo(); localStorage.removeItem(SKEY); K.stays && K.stays.ensure(); K.toast('Demo data reset'); K.go('#/'); } });
     K.render();
   };
 })();
